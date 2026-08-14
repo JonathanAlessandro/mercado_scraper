@@ -1,0 +1,21 @@
+{
+  "name": "nagumo-coop-scraper",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Coletor de produtos dos e-commerces Nagumo e Coop com persistência em MySQL.",
+  "type": "module",
+  "scripts": {
+    "install-browsers": "playwright install chromium",
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "mysql2": "^3.12.0",
+    "p-limit": "^6.2.0",
+    "playwright": "^1.51.1"
+  }
+}
