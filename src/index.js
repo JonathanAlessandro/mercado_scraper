@@ -1,40 +1,48 @@
 import { config } from './config.js';
 import { ensureDatabase, pool, upsertProduct } from './db/mysql.js';
-import { collectSource, createBrowser } from './collectors/generic.js';
+import { createBrowser } from './collectors/generic.js';
+import { collectNagumo } from './collectors/nagumo.js';
+import { collectCoop } from './collectors/coop.js';
+import { collectSonda } from './collectors/sonda.js';
+import { collectJoanin } from './collectors/joanin.js';
+import { collectCarrefour } from './collectors/carrefour.js';
+import { collectAssai } from './collectors/assai.js';
+import { collectSuperAbc } from './collectors/superabc.js';
 
-const sources = [
-  {
-    source: 'nagumo',
-    baseUrl: config.sources.nagumo,
-    startUrl: config.sources.nagumo
-  },
-  {
-    source: 'coop',
-    baseUrl: config.sources.coop,
-    startUrl: config.sources.coop
-  }
+const collectors = [
+  ['nagumo', collectNagumo],
+  ['coop', collectCoop],
+  ['sonda', collectSonda],
+  ['joanin', collectJoanin],
+  ['carrefour', collectCarrefour],
+  ['assai', collectAssai],
+  ['superabc', collectSuperAbc]
 ];
 
 async function main() {
   const startedAt = new Date();
-  console.log(`Iniciando coleta paralela em ${startedAt.toISOString()}`);
-  console.log(`Mercados simultâneos: ${sources.length}; workers por mercado: ${config.maxConcurrency}`);
+  console.log(`Iniciando coleta de ${collectors.length} mercados em ${startedAt.toISOString()}`);
+  console.log(`Workers por mercado: ${config.maxConcurrency}`);
   await ensureDatabase();
 
   const browser = await createBrowser();
   try {
-    const results = await Promise.all(sources.map(async (source) => {
+    const results = await Promise.all(collectors.map(async ([source, collect]) => {
       let saved = 0;
-      const products = await collectSource({
-        ...source,
-        browser,
-        onProduct: async (product) => {
-          await upsertProduct({ ...product, collected_at: startedAt });
-          saved += 1;
-        }
-      });
-      console.log(`[${source.source}] ${saved} produtos gravados/atualizados.`);
-      return { source: source.source, found: products.length, saved };
+      try {
+        const products = await collect({
+          browser,
+          onProduct: async (product) => {
+            await upsertProduct({ ...product, collected_at: startedAt });
+            saved += 1;
+          }
+        });
+        console.log(`[${source}] ${saved} produtos gravados/atualizados.`);
+        return { source, status: 'ok', found: products.length, saved };
+      } catch (error) {
+        console.warn(`[${source}] coleta interrompida: ${error.message}`);
+        return { source, status: 'error', found: 0, saved, error: error.message };
+      }
     }));
 
     console.table(results);

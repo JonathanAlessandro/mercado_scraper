@@ -35,6 +35,21 @@ export async function ensureDatabase() {
         KEY idx_collected_at (collected_at),
         KEY idx_external_id (source, external_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS price_history (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        product_id BIGINT UNSIGNED NOT NULL,
+        price DECIMAL(12,2) NULL,
+        promotional_price DECIMAL(12,2) NULL,
+        available TINYINT(1) NOT NULL,
+        collected_at DATETIME NOT NULL,
+        PRIMARY KEY (id),
+        KEY idx_price_product_date (product_id, collected_at),
+        CONSTRAINT fk_price_history_product
+          FOREIGN KEY (product_id) REFERENCES products(id)
+          ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
   } finally {
     connection.release();
@@ -52,6 +67,7 @@ export async function upsertProduct(product) {
        :promotional_price, :unit, :available, :image_url, :product_url,
        :raw_data, :collected_at)
     ON DUPLICATE KEY UPDATE
+      id = LAST_INSERT_ID(id),
       external_id = VALUES(external_id),
       name = VALUES(name),
       brand = VALUES(brand),
@@ -66,9 +82,20 @@ export async function upsertProduct(product) {
       collected_at = VALUES(collected_at);
   `;
 
-  await pool.execute(sql, {
+  const collectedAt = product.collected_at ?? new Date();
+  const [result] = await pool.execute(sql, {
     ...product,
     raw_data: JSON.stringify(product.raw_data ?? {}),
-    collected_at: product.collected_at ?? new Date()
+    collected_at: collectedAt
   });
+
+  if (config.savePriceHistory) {
+    await pool.execute(`
+      INSERT INTO price_history
+        (product_id, price, promotional_price, available, collected_at)
+      VALUES (?, ?, ?, ?, ?)
+    `, [result.insertId, product.price ?? null, product.promotional_price ?? null, product.available ? 1 : 0, collectedAt]);
+  }
+
+  return result.insertId;
 }

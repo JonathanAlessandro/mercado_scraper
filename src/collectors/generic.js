@@ -34,7 +34,7 @@ function productFromJsonLd(json, pageUrl, baseUrl, source) {
   };
 }
 
-async function extractPageProducts(page, { source, baseUrl }) {
+async function extractPageProducts(page, { source, baseUrl, selectors = PRODUCT_SELECTORS }) {
   return page.evaluate(({ source, baseUrl, selectors }) => {
     const text = (el) => el?.textContent?.replace(/\\s+/g, ' ').trim() || null;
     const attr = (el, name) => el?.getAttribute(name) || null;
@@ -47,7 +47,7 @@ async function extractPageProducts(page, { source, baseUrl }) {
 
     for (const selector of selectors) {
       for (const card of document.querySelectorAll(selector)) {
-        const link = card.querySelector('a[href]');
+        const link = card.matches?.('a[href]') ? card : card.querySelector('a[href]');
         const productUrl = absolute(attr(link, 'href'));
         const name = text(card.querySelector('[class*="name"], [class*="Name"], [class*="title"], h2, h3, h4')) || text(link);
         if (!productUrl || !name || seen.has(productUrl)) continue;
@@ -74,7 +74,7 @@ async function extractPageProducts(page, { source, baseUrl }) {
       }
     }
     return result;
-  }, { source, baseUrl, selectors: PRODUCT_SELECTORS });
+  }, { source, baseUrl, selectors });
 }
 
 async function extractJsonLd(page, { source, baseUrl }) {
@@ -152,8 +152,8 @@ async function processWithRetry(page, url, sourceConfig) {
   throw lastError;
 }
 
-export async function collectSource({ source, startUrl, baseUrl, browser, onProduct }) {
-  const sourceConfig = { source, baseUrl };
+export async function collectSource({ source, startUrl, baseUrl, browser, onProduct, selectors = PRODUCT_SELECTORS }) {
+  const sourceConfig = { source, baseUrl, selectors };
   const queue = [startUrl];
   const visited = new Set();
   const products = new Map();

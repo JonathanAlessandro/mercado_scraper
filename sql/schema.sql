@@ -27,3 +27,17 @@ CREATE TABLE IF NOT EXISTS products (
   KEY idx_collected_at (collected_at),
   KEY idx_external_id (source, external_id)
 ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS price_history (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  product_id BIGINT UNSIGNED NOT NULL,
+  price DECIMAL(12,2) NULL,
+  promotional_price DECIMAL(12,2) NULL,
+  available TINYINT(1) NOT NULL,
+  collected_at DATETIME NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_price_product_date (product_id, collected_at),
+  CONSTRAINT fk_price_history_product
+    FOREIGN KEY (product_id) REFERENCES products(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB;

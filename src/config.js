@@ -19,11 +19,17 @@ export const config = {
   },
   sources: {
     nagumo: required('NAGUMO_BASE_URL', 'https://www.nagumo.com.br').replace(/\/$/, ''),
-    coop: required('COOP_BASE_URL', 'https://www.coopsupermercado.com.br').replace(/\/$/, '')
+    coop: required('COOP_BASE_URL', 'https://www.coopsupermercado.com.br').replace(/\/$/, ''),
+    sonda: required('SONDA_BASE_URL', 'https://www.sondadelivery.com.br').replace(/\/$/, ''),
+    joanin: required('JOANIN_BASE_URL', 'https://www.joaninonline.com.br').replace(/\/$/, ''),
+    carrefour: required('CARREFOUR_BASE_URL', 'https://mercado.carrefour.com.br').replace(/\/$/, ''),
+    assai: required('ASSAI_BASE_URL', 'https://www.assai.com.br').replace(/\/$/, ''),
+    superabc: required('SUPERABC_BASE_URL', 'https://superabconline.com.br').replace(/\/$/, '')
   },
   headless: String(process.env.HEADLESS ?? 'true').toLowerCase() !== 'false',
   requestDelayMs: Number(required('REQUEST_DELAY_MS', '1200')),
   pageSettleMs: Number(required('PAGE_SETTLE_MS', '1500')),
   maxConcurrency: Number(required('MAX_CONCURRENCY', '2')),
-  maxPagesPerSource: Number(required('MAX_PAGES_PER_SOURCE', '500'))
+  maxPagesPerSource: Number(required('MAX_PAGES_PER_SOURCE', '500')),
+  savePriceHistory: String(process.env.SAVE_PRICE_HISTORY ?? 'true').toLowerCase() !== 'false'
 };
