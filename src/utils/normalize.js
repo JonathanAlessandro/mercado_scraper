@@ -7,10 +7,25 @@ export function cleanText(value) {
 export function absoluteUrl(value, baseUrl) {
   if (!value) return null;
   try {
-    return new URL(value, baseUrl).href;
+    const url = new URL(String(value), baseUrl);
+    if (!/^https?:$/.test(url.protocol)) return null;
+    return url.href;
   } catch {
     return null;
   }
+}
+
+export function canonicalizeUrl(value, baseUrl) {
+  const resolved = absoluteUrl(value, baseUrl);
+  if (!resolved) return null;
+  const url = new URL(resolved);
+  url.hash = '';
+  for (const key of [...url.searchParams.keys()]) {
+    if (/^(utm_|gclid$|fbclid$|srsltid$|ref$|source$)/i.test(key)) {
+      url.searchParams.delete(key);
+    }
+  }
+  return url.href.replace(/\/$/, '') || url.origin;
 }
 
 export function parseBrazilianMoney(value) {
@@ -36,8 +51,32 @@ export function firstNonEmpty(...values) {
   return values.find((value) => cleanText(value)) ?? null;
 }
 
-export function isProductLikeUrl(url) {
+function testPattern(pattern, value) {
+  if (!(pattern instanceof RegExp)) return false;
+  pattern.lastIndex = 0;
+  const matched = pattern.test(value);
+  pattern.lastIndex = 0;
+  return matched;
+}
+
+export function isProductLikeUrl(url, {
+  baseUrl,
+  productUrlPattern,
+  catalogPathPatterns = []
+} = {}) {
   if (!url) return false;
-  const pathname = new URL(url).pathname.toLowerCase();
-  return !/(login|account|checkout|cart|politica|termos|fale-conosco|blog|receitas)/.test(pathname);
+  try {
+    const current = new URL(url, baseUrl);
+    const base = baseUrl ? new URL(baseUrl) : null;
+    if (base && current.hostname !== base.hostname) return false;
+    const pathname = current.pathname.toLowerCase();
+    if (/\/(?:login|account|checkout|cart|quick-view|espiar|buscapagina)(?:\/|$)/i.test(pathname)) return false;
+    if (/(?:politica|termos|fale-conosco|blog|receitas|institucional|trabalhe-conosco|nossas-lojas)/i.test(pathname)) return false;
+    if (testPattern(productUrlPattern, `${current.pathname}${current.search}`)) return true;
+    if (catalogPathPatterns.some((pattern) => testPattern(pattern, pathname))) return true;
+    return /\/(?:produto|product|products|p)(?:\/|$)/i.test(pathname)
+      || /(?:[?&](?:cgid|map|page|pageindex)=)/i.test(current.search);
+  } catch {
+    return false;
+  }
 }

@@ -37,8 +37,12 @@ async function main() {
             saved += 1;
           }
         });
-        console.log(`[${source}] ${saved} produtos gravados/atualizados.`);
-        return { source, status: 'ok', found: products.length, saved };
+        const stats = products.stats ?? {};
+        const status = stats.failedPages > 0
+          ? (products.length > 0 ? 'partial' : 'blocked_or_unavailable')
+          : 'ok';
+        console.log(`[${source}] ${saved} produtos gravados/atualizados; ${stats.pagesProcessed ?? 0} páginas; ${stats.failedPages ?? 0} falhas; status=${status}.`);
+        return { source, status, found: products.length, saved, ...stats };
       } catch (error) {
         console.warn(`[${source}] coleta interrompida: ${error.message}`);
         return { source, status: 'error', found: 0, saved, error: error.message };
