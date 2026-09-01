@@ -100,8 +100,22 @@ Para validar os parsers (VTEX, Nagumo, normalização de preços e URLs):
 npm test
 ```
 
+### Execução via Docker Compose
+Você pode subir o banco de dados MySQL, o painel Adminer e executar o scraper em contêineres:
 
-Se uma fonte apresentar captcha ou bloqueio, não tente contorná-lo. Verifique o site manualmente, confirme os termos de uso e, se necessário, ajuste apenas uma URL pública ou um seletor documentado. A coleta deve ser feita com baixa concorrência e intervalo entre requisições, respeitando as políticas da fonte.
+```bash
+# 1. Subir o banco de dados e adminer
+docker compose up -d db adminer
+
+# 2. Executar a coleta completa
+docker compose run --rm scraper
+
+# 3. Ou executar apenas mercados específicos via Docker
+docker compose run --rm scraper node src/index.js nagumo coop
+```
+
+- **Adminer (Visualizador do banco via web)**: Acesse `http://localhost:8080` (Servidor: `db`, Usuário: `root`, Senha: `${DB_PASSWORD:-root}`, Banco: `mercado_scraper`).
+
 
 ## Consulta de produtos observados hoje
 
