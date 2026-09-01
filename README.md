@@ -77,23 +77,29 @@ O banco pode ser criado manualmente com `mysql -u root -p < sql/schema.sql`; a a
 
 ## Execução e validação
 
-Execute a coleta completa com:
-
+### Coleta de todos os mercados
 ```bash
 npm start
 ```
 
-O resumo exibirá, por fonte, a quantidade encontrada, a quantidade gravada, páginas processadas, falhas e status. Para validar a lógica sem conectar ao banco, use os testes unitários:
+### Coleta direcionada de mercados específicos
+Você pode especificar um ou mais mercados para execução rápida:
+```bash
+# Apenas Nagumo e Coop em alta velocidade
+node src/index.js nagumo coop
 
+# Apenas Sonda e Super ABC
+node src/index.js sonda superabc
+```
+
+O resumo exibirá, por fonte, a quantidade encontrada, a quantidade gravada, tempo de execução, modo de coleta (`vtex-api`, `nagumo-http` ou `browser`), páginas processadas, falhas e status.
+
+### Testes automatizados
+Para validar os parsers (VTEX, Nagumo, normalização de preços e URLs):
 ```bash
 npm test
 ```
 
-Para uma verificação leve das fontes Nagumo e Coop antes da coleta completa, pode-se usar o smoke test incluído:
-
-```bash
-MAX_PAGES_PER_SOURCE=1 MAX_SITEMAP_URLS=0 node tools/smoke_sources.js
-```
 
 Se uma fonte apresentar captcha ou bloqueio, não tente contorná-lo. Verifique o site manualmente, confirme os termos de uso e, se necessário, ajuste apenas uma URL pública ou um seletor documentado. A coleta deve ser feita com baixa concorrência e intervalo entre requisições, respeitando as políticas da fonte.
 

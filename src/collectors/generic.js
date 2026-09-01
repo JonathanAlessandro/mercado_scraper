@@ -314,21 +314,20 @@ async function processPage(page, url, sourceConfig) {
     waitUntil: 'domcontentloaded',
     timeout: config.navigationTimeoutMs
   });
-  await page.waitForTimeout(sourceConfig.pageSettleMs ?? config.pageSettleMs);
+
   if (sourceConfig.waitForSelector) {
     await page.waitForSelector(sourceConfig.waitForSelector, {
       state: 'attached',
-      timeout: sourceConfig.waitForSelectorTimeout ?? Math.min(config.navigationTimeoutMs, 15000)
+      timeout: Math.min(sourceConfig.waitForSelectorTimeout ?? 5000, 5000)
     }).catch(() => {});
   }
-  await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
 
   const jsonProducts = await extractJsonLd(page, sourceConfig);
   const cardProducts = (await extractPageProducts(page, sourceConfig))
     .map((product) => normalizeCardProduct(product, sourceConfig.source, sourceConfig.baseUrl));
   const products = [...jsonProducts, ...cardProducts].filter((product) => product.name && product.product_url);
   const title = await page.title().catch(() => '');
-  const body = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
+  const body = await page.locator('body').innerText({ timeout: 3000 }).catch(() => '');
   const status = response?.status?.() ?? 200;
   if (blockedPage(title, body, status, products.length)) {
     throw new Error(`fonte bloqueada ou indisponível (HTTP ${status}; título: ${title || 'sem título'})`);
@@ -356,12 +355,12 @@ async function extractJsonLd(page, sourceConfig) {
 
 async function processWithRetry(page, url, sourceConfig) {
   let lastError;
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
       return await processPage(page, url, sourceConfig);
     } catch (error) {
       lastError = error;
-      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
+      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, attempt * 500));
     }
   }
   throw lastError;
@@ -419,14 +418,33 @@ export async function collectSource({
   };
 
   const worker = async (workerId) => {
-    const context = await browser.newContext({ locale: 'pt-BR', timezoneId: 'America/Sao_Paulo' });
+    const context = await browser.newContext({
+      locale: 'pt-BR',
+      timezoneId: 'America/Sao_Paulo',
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+    });
     const page = await context.newPage();
+
+    // Bloquear imagens, fontes, estilos e trackers para acelerar navegação em 400%
+    await page.route('**/*', (route) => {
+      const req = route.request();
+      const type = req.resourceType();
+      const reqUrl = req.url();
+      if (['image', 'stylesheet', 'font', 'media'].includes(type)) {
+        return route.abort();
+      }
+      if (/google-analytics|googletagmanager|facebook|criteo|doubleclick|hotjar|clarity|bing|yandex/i.test(reqUrl)) {
+        return route.abort();
+      }
+      return route.continue();
+    });
+
     try {
       while (true) {
         const url = takeUrl();
         if (!url) {
           if (inFlight === 0 && (queue.length === 0 || pagesProcessed >= config.maxPagesPerSource)) break;
-          await new Promise((resolve) => setTimeout(resolve, 250));
+          await new Promise((resolve) => setTimeout(resolve, 100));
           continue;
         }
         inFlight += 1;
@@ -439,21 +457,26 @@ export async function collectSource({
             products.set(key, merged);
             if (onProduct) await onProduct(merged);
           }
-          console.log(`[${source}/worker-${workerId}] página ${pagesProcessed}/${config.maxPagesPerSource}; ${products.size} produtos`);
+          if (pagesProcessed % 10 === 0 || pagesProcessed === 1) {
+            console.log(`[${source}/worker-${workerId}] página ${pagesProcessed}/${config.maxPagesPerSource}; ${products.size} produtos`);
+          }
         } catch (error) {
           failedPages += 1;
           console.warn(`[${source}/worker-${workerId}] falha em ${url}: ${error.message}`);
         } finally {
           inFlight -= 1;
         }
-        await new Promise((resolve) => setTimeout(resolve, config.requestDelayMs));
+        if (config.requestDelayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, config.requestDelayMs));
+        }
       }
     } finally {
       await context.close();
     }
   };
 
-  const workerCount = Math.max(1, Math.min(config.maxConcurrency, config.maxPagesPerSource));
+  const concurrency = config.browserConcurrency ?? config.maxConcurrency ?? 3;
+  const workerCount = Math.max(1, Math.min(concurrency, config.maxPagesPerSource));
   await Promise.all(Array.from({ length: workerCount }, (_, index) => worker(index + 1)));
   console.log(`[${source}] concluído: ${products.size} produtos; ${pagesProcessed} páginas; ${failedPages} falhas.`);
   const result = [...products.values()];
@@ -465,5 +488,15 @@ export async function collectSource({
 }
 
 export async function createBrowser() {
-  return chromium.launch({ headless: config.headless });
+  return chromium.launch({
+    headless: config.headless,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--disable-gpu'
+    ]
+  });
 }
+

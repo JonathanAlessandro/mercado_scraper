@@ -57,17 +57,53 @@ export async function ensureDatabase() {
 }
 
 export async function upsertProduct(product) {
+  const [savedCount] = await bulkUpsertProducts([product]);
+  return savedCount;
+}
+
+export async function bulkUpsertProducts(products) {
+  if (!Array.isArray(products) || products.length === 0) return 0;
+
+  const map = new Map();
+  for (const p of products) {
+    if (!p || !p.source || !p.product_url) continue;
+    const key = `${p.source}|${p.product_url}`;
+    map.set(key, p);
+  }
+  const uniqueProducts = [...map.values()];
+  if (uniqueProducts.length === 0) return 0;
+
+  const placeholders = [];
+  const values = [];
+
+  for (const p of uniqueProducts) {
+    placeholders.push('(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    values.push(
+      p.source,
+      p.external_id ?? null,
+      p.name,
+      p.brand ?? null,
+      p.category ?? null,
+      p.sku ?? null,
+      p.price ?? null,
+      p.promotional_price ?? null,
+      p.unit ?? null,
+      p.available ? 1 : 0,
+      p.image_url ?? null,
+      p.product_url,
+      JSON.stringify(p.raw_data ?? {}),
+      p.collected_at ?? new Date()
+    );
+  }
+
   const sql = `
     INSERT INTO products
       (source, external_id, name, brand, category, sku, price,
        promotional_price, unit, available, image_url, product_url,
        raw_data, collected_at)
     VALUES
-      (:source, :external_id, :name, :brand, :category, :sku, :price,
-       :promotional_price, :unit, :available, :image_url, :product_url,
-       :raw_data, :collected_at)
+      ${placeholders.join(', ')}
     ON DUPLICATE KEY UPDATE
-      id = LAST_INSERT_ID(id),
       external_id = VALUES(external_id),
       name = VALUES(name),
       brand = VALUES(brand),
@@ -82,20 +118,64 @@ export async function upsertProduct(product) {
       collected_at = VALUES(collected_at);
   `;
 
-  const collectedAt = product.collected_at ?? new Date();
-  const [result] = await pool.execute(sql, {
-    ...product,
-    raw_data: JSON.stringify(product.raw_data ?? {}),
-    collected_at: collectedAt
-  });
+  await pool.query(sql, values);
 
   if (config.savePriceHistory) {
-    await pool.execute(`
-      INSERT INTO price_history
-        (product_id, price, promotional_price, available, collected_at)
-      VALUES (?, ?, ?, ?, ?)
-    `, [result.insertId, product.price ?? null, product.promotional_price ?? null, product.available ? 1 : 0, collectedAt]);
+    try {
+      const source = uniqueProducts[0].source;
+      const urls = uniqueProducts.map((p) => p.product_url);
+      const historySql = `
+        INSERT INTO price_history (product_id, price, promotional_price, available, collected_at)
+        SELECT p.id, p.price, p.promotional_price, p.available, p.collected_at
+        FROM products p
+        WHERE p.source = ? AND p.product_url IN (?)
+      `;
+      await pool.query(historySql, [source, urls]);
+    } catch (err) {
+      console.warn(`[db] aviso ao gravar histórico de preços: ${err.message}`);
+    }
   }
 
-  return result.insertId;
+  return uniqueProducts.length;
 }
+
+export class BatchSaver {
+  constructor({ batchSize = config.batchSize, onFlush = null } = {}) {
+    this.batchSize = batchSize;
+    this.buffer = [];
+    this.savedCount = 0;
+    this.onFlush = onFlush;
+  }
+
+  async add(product) {
+    if (!product) return;
+    this.buffer.push(product);
+    if (this.buffer.length >= this.batchSize) {
+      await this.flush();
+    }
+  }
+
+  async flush() {
+    if (this.buffer.length === 0) return 0;
+    const items = this.buffer;
+    this.buffer = [];
+    try {
+      const count = await bulkUpsertProducts(items);
+      this.savedCount += count;
+      if (this.onFlush) this.onFlush(count, this.savedCount);
+      return count;
+    } catch (error) {
+      console.error(`[db] erro ao gravar lote de ${items.length} produtos:`, error.message);
+      let fallbackCount = 0;
+      for (const item of items) {
+        try {
+          await upsertProduct(item);
+          fallbackCount++;
+        } catch {}
+      }
+      this.savedCount += fallbackCount;
+      return fallbackCount;
+    }
+  }
+}
+

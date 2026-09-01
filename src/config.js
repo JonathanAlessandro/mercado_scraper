@@ -157,11 +157,16 @@ export const config = {
     }
   },
   headless: String(process.env.HEADLESS ?? 'true').toLowerCase() !== 'false',
-  requestDelayMs: Math.max(500, Number(required('REQUEST_DELAY_MS', '1500'))),
-  pageSettleMs: Math.max(250, Number(required('PAGE_SETTLE_MS', '1800'))),
+  requestDelayMs: Math.max(50, Number(required('REQUEST_DELAY_MS', '500'))),
+  pageSettleMs: Math.max(100, Number(required('PAGE_SETTLE_MS', '1000'))),
   navigationTimeoutMs: Math.max(10000, Number(required('NAVIGATION_TIMEOUT_MS', '45000'))),
-  maxConcurrency: Math.max(1, Number(required('MAX_CONCURRENCY', '1'))),
+  maxConcurrency: Math.max(1, Number(required('MAX_CONCURRENCY', '3'))),
+  browserConcurrency: Math.max(1, Number(process.env.BROWSER_CONCURRENCY ?? process.env.MAX_CONCURRENCY ?? '3')),
+  httpConcurrency: Math.max(1, Number(process.env.HTTP_CONCURRENCY ?? '12')),
+  batchSize: Math.max(1, Number(process.env.BATCH_SIZE ?? '200')),
+  useApiCollectors: String(process.env.USE_API_COLLECTORS ?? 'true').toLowerCase() !== 'false',
   maxPagesPerSource: Math.max(1, Number(required('MAX_PAGES_PER_SOURCE', '600'))),
   maxSitemapUrls: Math.max(0, Number(required('MAX_SITEMAP_URLS', '500'))),
   savePriceHistory: String(process.env.SAVE_PRICE_HISTORY ?? 'true').toLowerCase() !== 'false'
 };
+
